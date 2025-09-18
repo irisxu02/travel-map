@@ -8,6 +8,10 @@ from oauth2client.service_account import ServiceAccountCredentials
 from branca.colormap import LinearColormap
 import pycountry
 
+from dotenv import load_dotenv
+import os
+load_dotenv()
+
 def get_country_name(country_code):
     try:
         country = pycountry.countries.get(alpha_3=country_code)
@@ -26,7 +30,7 @@ def get_color(feature, color_scale, map_dict):
     else:
         return color_scale(value), 0.7
 
-def create_choropleth_layer(map, country_visit_counts):
+def create_choropleth_layer(m, country_visit_counts):
     choropleth_layer = folium.FeatureGroup(name='Linear Color Map')
 
     max_count = country_visit_counts['count'].max()
@@ -50,7 +54,8 @@ def create_choropleth_layer(map, country_visit_counts):
 
     return choropleth_layer, color_scale, max_count
 
-def create_circle_marker_layer(map, locations, visited_countries, maps_api_key):
+def create_circle_marker_layer(m, locations, visited_countries):
+    maps_api_key = os.getenv('MAPS_API_KEY')
     circle_marker_layer = folium.FeatureGroup(name='Circle Marker')
     marker_cluster = MarkerCluster().add_to(circle_marker_layer)
 
@@ -77,35 +82,29 @@ def create_circle_marker_layer(map, locations, visited_countries, maps_api_key):
     return circle_marker_layer
 
 def create_map():
-    maps_api_key = None
-    with open('maps_api_key.txt') as f:
-        maps_api_key = f.readline()
-
     # Get data from Google Sheets using pandas
-    scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+    scope = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
     credentials = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
     gc = gspread.authorize(credentials)
-    sheets_key = None
-    with open('sheets_key.txt') as f:
-        sheets_key = f.readline()
-    worksheet = gc.open_by_key(sheets_key).worksheet('Sheet1')
+    sheets_id = os.getenv('SHEETS_ID')
+    worksheet = gc.open_by_key(sheets_id).worksheet('Sheet1')
     data = worksheet.get_all_values()
     df = pd.DataFrame(data[1:], columns=data[0])
 
-    # Create folium map
-    map = folium.Map(location=[0, 0], zoom_start=2)
+    # Create folium m
+    m = folium.Map(location=[0, 0], zoom_start=2)
 
     locations = df['Location']
     visited_countries = df['Country']
     country_visit_counts = visited_countries.value_counts().to_frame().reset_index()
 
     # Create choropleth layer
-    choropleth_layer, color_scale, max_count = create_choropleth_layer(map, country_visit_counts)
-    choropleth_layer.add_to(map)
+    choropleth_layer, color_scale, max_count = create_choropleth_layer(m, country_visit_counts)
+    choropleth_layer.add_to(m)
 
     # Create circle marker layer
-    circle_marker_layer = create_circle_marker_layer(map, locations, visited_countries, maps_api_key)
-    circle_marker_layer.add_to(map)
+    circle_marker_layer = create_circle_marker_layer(m, locations, visited_countries)
+    circle_marker_layer.add_to(m)
 
     # Create legend
     legend_html = '''
@@ -113,7 +112,7 @@ def create_map():
                     bottom: 50px; left: 50px; width: 150px; height: {height}px;
                     border: 2px solid grey; z-index: 9999; font-size: 14px;
                     background-color: white;">
-            <div style="text-align: center; margin-top: 10px;"><b>Travel Frequency</b></div>
+            <div style="text-align: center; margin-top: 10px;"><b>Cities Visited</b></div>
             {color_swatches}
         </div>
     '''
@@ -124,14 +123,14 @@ def create_map():
         color_swatches += f'<div style="display: flex; flex-direction: row; align-items: center; justify-content: space-between; padding: 0 5px;"><div style="width: 30px; height: 15px; background-color: {color};"></div>{int(value)}</div>'
 
     legend_html = legend_html.format(height=140, color_swatches=color_swatches)
-    map.get_root().html.add_child(folium.Element(legend_html))
+    m.get_root().html.add_child(folium.Element(legend_html))
 
     # Light and dark mode
-    folium.TileLayer('cartodbdark_matter', overlay=False, name="View in Dark Mode").add_to(map)
-    folium.TileLayer('cartodbpositron', overlay=False, name="View in Light Mode").add_to(map)
+    folium.TileLayer('cartodbdark_matter', overlay=False, name="View in Dark Mode").add_to(m)
+    folium.TileLayer('cartodbpositron', overlay=False, name="View in Light Mode").add_to(m)
 
-    folium.LayerControl().add_to(map)
-    map.save('ccmap.html')
+    folium.LayerControl().add_to(m)
+    m.save('ccmap.html')
 
 if __name__ == '__main__':
     create_map()

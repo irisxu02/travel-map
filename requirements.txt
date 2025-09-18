@@ -1,0 +1,7 @@
+folium
+numpy
+pandas
+gspread
+python-dotenv
+oauth2client
+pycountry

@@ -7,7 +7,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from branca.colormap import LinearColormap
 import pycountry
-
+import time
 from dotenv import load_dotenv
 import os
 load_dotenv()
@@ -56,17 +56,23 @@ def create_choropleth_layer(m, country_visit_counts):
 
 def create_circle_marker_layer(m, locations, visited_countries):
     maps_api_key = os.getenv('MAPS_API_KEY')
+    if not maps_api_key:
+        raise ValueError("MAPS_API_KEY not set in environment")
     circle_marker_layer = folium.FeatureGroup(name='Circle Marker')
     marker_cluster = MarkerCluster().add_to(circle_marker_layer)
 
     for location, country in zip(locations, visited_countries):
+        if not location or pd.isnull(location):
+            print(f"Skipping invalid location: {location}")
+            continue
+
         search_term = location
         if country and not pd.isnull(country):
             search_term += f', {country}'
         url = f'https://maps.googleapis.com/maps/api/geocode/json?address={search_term}&key={maps_api_key}'
         response = requests.get(url)
         result = response.json()
-        if result['status'] == 'OK':
+        if result['status'] == 'OK' and len(result['results']) > 0:
             location = result['results'][0]['geometry']['location']
             lat = location['lat']
             lng = location['lng']
@@ -78,7 +84,10 @@ def create_circle_marker_layer(m, locations, visited_countries):
                 fill_color='black',
                 color='black',
             ).add_to(marker_cluster)
-
+            time.sleep(0.1)  # To respect API rate limits
+        else:
+            print(f"Geocoding failed for location: {search_term}, status: {result['status']}")
+            print(result['error_message'] if 'error_message' in result else '')
     return circle_marker_layer
 
 def create_map():
@@ -87,6 +96,8 @@ def create_map():
     credentials = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
     gc = gspread.authorize(credentials)
     sheets_id = os.getenv('SHEETS_ID')
+    if not sheets_id:
+        raise ValueError("SHEETS_ID not set in environment")
     worksheet = gc.open_by_key(sheets_id).worksheet('Sheet1')
     data = worksheet.get_all_values()
     df = pd.DataFrame(data[1:], columns=data[0])

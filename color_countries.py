@@ -141,7 +141,7 @@ def create_map():
     folium.TileLayer('cartodbpositron', overlay=False, name="View in Light Mode").add_to(m)
 
     folium.LayerControl().add_to(m)
-    m.save('ccmap.html')
+    m.save('index.html')
 
 if __name__ == '__main__':
     create_map()
